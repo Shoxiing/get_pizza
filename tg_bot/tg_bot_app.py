@@ -65,6 +65,10 @@ async def send_welcome(message: Message):
 #Функция для сохранения голосового сообщения в формате wav
 async def save_voice_as_wav(bot: Bot, voice: Voice) -> str:
     """Скачивает голосовое сообщение и сохраняет в формате wav."""
+
+    voice_files_dir = "/tg_bot/voice_files"
+    os.makedirs(voice_files_dir, exist_ok=True)
+
     voice_file_info = await bot.get_file(voice.file_id)
     voice_ogg = io.BytesIO()
     await bot.download_file(voice_file_info.file_path, voice_ogg)
