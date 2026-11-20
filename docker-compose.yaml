@@ -1,20 +1,54 @@
-version: '3.11'
-
 services:
-  telegram_bot:
-    container_name: tgm_bot
-    build: 
-      context: ./tg_bot
+  vllm:
+    build: ./vllm
+    container_name: pizza_vllm
     environment:
-      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
-      - TELEGRAM_BOT_API_KEY=${TELEGRAM_BOT_API_KEY}
+      - HF_TOKEN=${HF_TOKEN:-}
     volumes:
-      - ./tg_bot:/tg_bot
-    command: /bin/bash -c "python tg_bot_app.py"
+      - hf-cache:/root/.cache/huggingface
+    ipc: host
+    command:
+      - --model=${LLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      # оставляем ~5 ГБ VRAM под Whisper в контейнере бота (на 24 ГБ карте)
+      - --gpu-memory-utilization=0.72
+      - --max-model-len=8192
+      - --enable-prefix-caching
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
     deploy:
-          resources:
-            reservations:
-              devices:
-                - driver: nvidia
-                  count: 1
-                  capabilities: [gpu]
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  telegram_bot:
+    build: ./bot
+    container_name: pizza_bot
+    env_file: .env
+    environment:
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://vllm:8000/v1}
+      - LLM_MODEL=${LLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      - EMBEDDING_DEVICE=cuda
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    depends_on:
+      vllm:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  hf-cache:
+    name: hf-cache
